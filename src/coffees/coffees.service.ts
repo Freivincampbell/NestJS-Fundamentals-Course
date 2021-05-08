@@ -1,52 +1,49 @@
-import {
-	HttpException,
-	HttpStatus,
-	Injectable,
-	NotFoundException
-} from '@nestjs/common';
-import { CreateCoffeeDto } from './dto/create-coffee.dto';
-import { UpdateCoffeeDto } from './dto/update-coffee.dto';
-import { Coffee } from './entities/coffee.entity';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectConnection, InjectModel } from '@nestjs/mongoose';
+import { Connection, Model } from 'mongoose';
+import { CreateCoffeeDto } from 'src/coffees/dto/create-coffee.dto';
+import { UpdateCoffeeDto } from 'src/coffees/dto/update-coffee.dto';
+import { Coffee } from 'src/coffees/entities/coffee.entity';
+import { PaginationQueryDto } from '../common/dto/pagination-query.dto';
 
 @Injectable()
 export class CoffeesService {
-	private coffees: Coffee[] = [
-		{
-			id: 1,
-			name: 'Shipwreck Roast',
-			brand: 'Buddy Brew',
-			flavors: ['chocolate', 'vanilla']
-		}
-	];
+	constructor(
+		@InjectModel(Coffee.name) private readonly coffeeModel: Model<Coffee>,
+		@InjectConnection() private readonly connection: Connection
+	) {}
 
-	findAll() {
-		return this.coffees;
+	findAll(paginationQuery: PaginationQueryDto) {
+		const { limit, offset } = paginationQuery;
+		return this.coffeeModel.find().skip(offset).limit(limit).exec();
 	}
 
-	findOne(id: string) {
-		const coffee = this.coffees.find((item) => item.id === +id);
+	async findOne(id: string) {
+		const coffee = await this.coffeeModel.findOne({ _d: id }).exec();
 		if (!coffee) {
 			throw new NotFoundException(`Coffee #${id} not found`);
 		}
-
 		return coffee;
 	}
 
-	create(createCoffeeDto) {
-		this.coffees.push(createCoffeeDto);
+	create(createCoffeeDto: CreateCoffeeDto) {
+		const coffee = new this.coffeeModel(createCoffeeDto);
+		return coffee.save();
 	}
 
-	update(id, updateCoffee) {
-		const existingCoffee = this.coffees.find(id);
+	async update(id: string, updateCoffeeDto: UpdateCoffeeDto) {
+		const existingCoffee = await this.coffeeModel
+			.findOneAndUpdate({ _id: id }, { $set: updateCoffeeDto }, { new: true })
+			.exec();
 
-		if (existingCoffee) {
+		if (!existingCoffee) {
+			throw new NotFoundException(`Coffee #${id} not found!`);
 		}
+		return existingCoffee;
 	}
 
-	delete(id) {
-		const coffeeIndex = this.coffees.findIndex((item) => item.id == +id);
-		if (coffeeIndex >= 0) {
-			this.coffees.splice(coffeeIndex, 1);
-		}
+	async remove(id: string) {
+		const coffee = await this.findOne(id);
+		return coffee.remove();
 	}
 }
